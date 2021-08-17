@@ -51,7 +51,7 @@ class Grayscale2RGB:
 class ImageDataModule(LightningDataModule):
 
     def __init__(self, train_dir, val_dir, batch_size, num_workers, img_size, resize_ratio=0.75, 
-                fake_data=False, web_dataset=False, world_size = 1, dataset_size = [int(1e9)]):
+                fake_data=False, web_dataset=False, world_size = 1, dataset_size = [int(1e8), int(1e4)]):
         super().__init__()
         self.train_dir = train_dir
         self.val_dir = val_dir
@@ -116,7 +116,7 @@ class ImageDataModule(LightningDataModule):
     def train_dataloader(self):
         if self.web_dataset:
             dl = wds.WebLoader(self.train_dataset, batch_size=None, shuffle=False)
-            number_of_batches = self.train_dataset_size // (self.batch_size * self.world_size)
+            number_of_batches = int(self.train_dataset_size // (self.batch_size * self.world_size))
             dl = dl.repeat(9999999999).slice(number_of_batches)
             dl.length = number_of_batches
             return dl
@@ -126,7 +126,7 @@ class ImageDataModule(LightningDataModule):
     def val_dataloader(self):
         if self.web_dataset:
             dl = wds.WebLoader(self.val_dataset, batch_size=None, shuffle=False)
-            number_of_batches = self.val_dataset_size // (self.batch_size * self.world_size)
+            number_of_batches = int(self.val_dataset_size // (self.batch_size * self.world_size))
             dl = dl.repeat(9999999999).slice(number_of_batches)
             dl.length = number_of_batches
             return dl

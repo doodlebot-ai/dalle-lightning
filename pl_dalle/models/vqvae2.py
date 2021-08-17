@@ -40,7 +40,7 @@ class VQVAE2(pl.LightningModule):
         self.image_size = args.resolution
         self.num_tokens = args.num_tokens * 2 #two codebooks
 
-        self.enc_b = Encoder(args.in_channels, args.hidden_dim, args.num_res_blocks, args.num_res_ch, stride=4)
+        self.enc_b = Encoder(args.in_channels, args.hidden_dim, args.num_res_blocks, args.num_res_ch, stride=8)
         self.enc_t = Encoder(args.hidden_dim, args.hidden_dim, args.num_res_blocks, args.num_res_ch, stride=2)
         self.quantize_conv_t = nn.Conv2d(args.hidden_dim, args.codebook_dim, 1)
         self.quantize_t = Quantize(args.codebook_dim, args.num_tokens, args.quant_ema_decay)
@@ -58,7 +58,7 @@ class VQVAE2(pl.LightningModule):
             args.hidden_dim,
             args.num_res_blocks,
             args.num_res_ch,
-            stride=4,
+            stride=8,
         )
 
     def forward(self, input):
@@ -233,21 +233,18 @@ class Encoder(nn.Module):
     def __init__(self, in_channel, channel, n_res_block, n_res_channel, stride):
         super().__init__()
 
-        if stride == 4:
-            blocks = [
-                nn.Conv2d(in_channel, channel // 2, 4, stride=2, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(channel // 2, channel, 4, stride=2, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(channel, channel, 3, padding=1),
-            ]
-
-        elif stride == 2:
-            blocks = [
-                nn.Conv2d(in_channel, channel // 2, 4, stride=2, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(channel // 2, channel, 3, padding=1),
-            ]
+        strides = int(math.log2(stride))
+        blocks = [nn.Conv2d(in_channel, channel // 2, 4, stride=2, padding=1), nn.ReLU(inplace=True)]
+        for i in range(strides-1):
+            if i == strides-2:
+                blocks.append(nn.Conv2d(channel // 2, channel, 4, stride=2, padding=1))
+            else:
+                blocks.append(nn.Conv2d(channel // 2, channel // 2, 4, stride=2, padding=1))
+            blocks.append(nn.ReLU(inplace=True))
+        if strides == 1:
+            blocks.append(nn.Conv2d(channel // 2, channel, 3, padding=1))
+        else:
+            blocks.append(nn.Conv2d(channel, channel, 3, padding=1))
 
         for i in range(n_res_block):
             blocks.append(ResBlock(channel, n_res_channel))
@@ -288,6 +285,19 @@ class Decoder(nn.Module):
             blocks.append(
                 nn.ConvTranspose2d(channel, out_channel, 4, stride=2, padding=1)
             )
+        elif stride == 8:
+            blocks.extend(
+                [
+                    nn.ConvTranspose2d(channel, channel // 2, 4, stride=2, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.ConvTranspose2d(channel // 2, channel // 2, 4, stride=2, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.ConvTranspose2d(
+                        channel // 2, out_channel, 4, stride=2, padding=1
+                    ),
+                ]
+            )
+
 
         self.blocks = nn.Sequential(*blocks)
 
