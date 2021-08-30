@@ -24,6 +24,7 @@ class VDVQVAE(pl.LightningModule):
         lr_decay: bool = False,
         learning_rate: float = 4.5e-6,
         batch_size: int = 8,
+        pixel_shuffle: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -43,13 +44,14 @@ class VDVQVAE(pl.LightningModule):
         self.quant_convs = nn.ModuleList([])
         self.learning_rate = learning_rate
         self.lr_decay = lr_decay
+        self.pixel_shuffle = pixel_shuffle
 
         for i, stride in enumerate(self.strides):
             if i == 0:
                 in_ch = self.in_ch
             else:
                 in_ch = self.hidden_dim
-            enc = encoder(in_ch, self.hidden_dim, self.hidden_dim, self.num_res_blocks, self.num_res_ch, stride=stride)
+            enc = encoder(in_ch, self.hidden_dim, self.hidden_dim, self.num_res_blocks, self.num_res_ch, stride, pixel_shuffle)
             self.encoders.append(enc)
         
         self.max_stride = math.prod(self.strides)
@@ -68,12 +70,12 @@ class VDVQVAE(pl.LightningModule):
             else:
                 out_ch = self.codebook_dim * num_codes
                 num_res_blocks = self.num_res_blocks
-                self.upsamples.append(upsample_block(in_ch, in_ch, stride))
+                self.upsamples.append(upsample_block(in_ch, in_ch, stride, pixel_shuffle))
                 
             dec = decoder(
                 in_ch, out_ch, self.hidden_dim, 
                 self.num_res_blocks, self.num_res_ch, 
-                stride=stride
+                stride, pixel_shuffle
             )
             self.decoders.append(dec)
         
@@ -223,40 +225,54 @@ def unstack_toks(toks, v_low, kh, kw):
     rebased_high = rebased[:,-1,:,:]
     return rebased_low, rebased_high
 
-def upsample_block(in_channel, out_channel, stride, hidden_dim=None):
+def upsample_block(in_channel, out_channel, stride, hidden_dim=None, pixel_shuffle=False):
     if hidden_dim is None:
         hidden_dim = out_channel
     blocks = [nn.Conv2d(in_channel, hidden_dim, 3, padding=1)]
     strides = int(math.log2(stride))
     for i in range(strides):
-        blocks.extend([
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-        ])
+        if pixel_shuffle:
+            blocks.extend([
+                nn.Conv2d(hidden_dim, hidden_dim * 4, 3, padding='same'),
+                nn.ReLU(inplace=True),
+                nn.PixelShuffle(2),
+            ])
+        else:
+            blocks.extend([
+                nn.ConvTranspose2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
+                nn.ReLU(inplace=True),
+            ])
     blocks.append(nn.Conv2d(hidden_dim, out_channel, 1))
     return nn.Sequential(*blocks)
         
-def decoder(in_channel, out_channel, channel, n_res_block, n_res_channel, stride):
+def decoder(in_channel, out_channel, channel, n_res_block, n_res_channel, stride, pixel_shuffle):
     blocks = [nn.Conv2d(in_channel, channel, 3, padding=1)]
     blocks.append(nn.Sequential(*[ResBlock(channel, n_res_channel) for _ in range(n_res_block)]))
-    blocks.append(upsample_block(channel, out_channel, stride))    
+    blocks.append(upsample_block(channel, out_channel, stride, pixel_shuffle))    
     return nn.Sequential(*blocks)
 
-def downsample_block(in_channel, out_channel, stride, hidden_dim=None):
+def downsample_block(in_channel, out_channel, stride, hidden_dim=None, pixel_shuffle=False):
     if hidden_dim is None:
         hidden_dim = in_channel
     blocks = [nn.Conv2d(in_channel, hidden_dim, 3, padding=1)]    
     strides = int(math.log2(stride))
     for i in range(strides):
-        blocks.extend([
-            nn.Conv2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-        ])
+        if pixel_shuffle:
+            blocks.extend([
+                nn.PixelUnshuffle(2),
+                nn.Conv2d(hidden_dim * 4, hidden_dim, 3, 1, padding='same'),
+                nn.ReLU(inplace=True),
+            ])
+        else:
+            blocks.extend([
+                nn.Conv2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
+                nn.ReLU(inplace=True),
+            ])
     blocks.append(nn.Conv2d(hidden_dim, out_channel, 1))
     return nn.Sequential(*blocks)
 
-def encoder(in_channel, out_channel, channel, n_res_block, n_res_channel, stride):
-    blocks = [downsample_block(in_channel, channel, stride, channel // 2)]
+def encoder(in_channel, out_channel, channel, n_res_block, n_res_channel, stride, pixel_shuffle):
+    blocks = [downsample_block(in_channel, channel, stride, channel // 2, pixel_shuffle)]
     blocks.append(nn.Sequential(*[ResBlock(channel, n_res_channel) for _ in range(n_res_block)]))
     blocks.append(nn.Conv2d(channel, out_channel, 1))
     return nn.Sequential(*blocks)

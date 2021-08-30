@@ -155,6 +155,7 @@ if __name__ == "__main__":
                     help='model settings')
     parser.add_argument('--strides', type=json.loads, default=[4, 2, 2], help='vdvqvae strides')
     parser.add_argument('--vocabs', type=json.loads, default=[4, 256, 65536], help='vdvqvae vocabularies')
+    parser.add_argument('--pixel_shuffle', type=bool, default=False, help="replace strided conv with unstrided + pixel shuffle")
 
     #loss configuration
     parser.add_argument('--smooth_l1_loss', dest = 'smooth_l1_loss', action = 'store_true')
@@ -244,6 +245,7 @@ if __name__ == "__main__":
             args.quant_beta, args.quant_ema_decay,
             args.num_res_blocks, args.num_res_ch,
             args.lr_decay, args.learning_rate, args.batch_size,
+            args.pixel_shuffle,
         )
 
     default_root_dir = args.log_dir
