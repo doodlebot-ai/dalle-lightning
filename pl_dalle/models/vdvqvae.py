@@ -64,7 +64,7 @@ class VDVQVAE(pl.LightningModule):
 
             if i == 0:
                 out_ch = self.in_ch * 2
-                num_res_blocks = self.num_res_blocks
+                num_res_blocks = self.num_res_blocks * 4
             else:
                 out_ch = self.codebook_dim * num_codes
                 num_res_blocks = self.num_res_blocks
