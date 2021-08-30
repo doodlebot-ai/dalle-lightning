@@ -293,7 +293,7 @@ if __name__ == "__main__":
     else:
         trainer = Trainer(tpu_cores=tpus, gpus= gpus, default_root_dir=default_root_dir,
                           max_epochs=args.epochs, progress_bar_refresh_rate=args.refresh_rate,precision=args.precision,
-                          val_check_interval=10_000, callbacks=[EarlyStopping(monitor="val/recon_loss", patience=2)],
+                          val_check_interval=10_000, callbacks=[EarlyStopping(monitor="val/rec_loss", patience=2)],
                           accelerator='ddp', benchmark=True, plugins=pl.plugins.DDPPlugin(find_unused_parameters=False),
                           num_sanity_val_steps=args.num_sanity_val_steps,
                           limit_train_batches=limit_train_batches,limit_test_batches=limit_test_batches,                          
