@@ -70,7 +70,7 @@ class VDVQVAE(pl.LightningModule):
             else:
                 out_ch = self.codebook_dim * num_codes
                 num_res_blocks = self.num_res_blocks
-                self.upsamples.append(upsample_block(in_ch, in_ch, stride, pixel_shuffle))
+                self.upsamples.append(upsample_block(in_ch, in_ch, stride, None, pixel_shuffle))
                 
             dec = decoder(
                 in_ch, out_ch, self.hidden_dim, 
@@ -248,7 +248,7 @@ def upsample_block(in_channel, out_channel, stride, hidden_dim=None, pixel_shuff
 def decoder(in_channel, out_channel, channel, n_res_block, n_res_channel, stride, pixel_shuffle):
     blocks = [nn.Conv2d(in_channel, channel, 3, padding=1)]
     blocks.append(nn.Sequential(*[ResBlock(channel, n_res_channel) for _ in range(n_res_block)]))
-    blocks.append(upsample_block(channel, out_channel, stride, pixel_shuffle))    
+    blocks.append(upsample_block(channel, out_channel, stride, None, pixel_shuffle))    
     return nn.Sequential(*blocks)
 
 def downsample_block(in_channel, out_channel, stride, hidden_dim=None, pixel_shuffle=False):
