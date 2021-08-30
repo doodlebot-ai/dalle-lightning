@@ -73,7 +73,7 @@ if __name__ == "__main__":
              
     parser.add_argument('--seed', type=int, default=42,
                     help='random seed')  
-    parser.add_argument('--gpus', type=int, default=16,
+    parser.add_argument('--gpus', type=int, default=-1,
                     help='number of gpus')     
     parser.add_argument('--gpu_dist', action='store_true', default=False,
                     help='distributed training with gpus') 
