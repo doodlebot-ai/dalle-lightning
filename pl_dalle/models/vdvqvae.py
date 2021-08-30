@@ -228,7 +228,7 @@ def unstack_toks(toks, v_low, kh, kw):
 def upsample_block(in_channel, out_channel, stride, hidden_dim=None, pixel_shuffle=False):
     if hidden_dim is None:
         hidden_dim = out_channel
-    blocks = [nn.Conv2d(in_channel, hidden_dim, 3, padding=1)]
+    blocks = [nn.Conv2d(in_channel, hidden_dim, 3, padding='same')]
     strides = int(math.log2(stride))
     for i in range(strides):
         if pixel_shuffle:
