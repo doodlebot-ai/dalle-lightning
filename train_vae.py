@@ -196,7 +196,7 @@ if __name__ == "__main__":
         args.world_size = xm.xrt_world_size()
     else:
         tpus = None
-        gpus = [2]
+        gpus = args.gpus 
         args.num_cores = args.gpus        
         if args.gpu_dist:
             torch.distributed.init_process_group(backend='nccl') 
