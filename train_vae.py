@@ -1,4 +1,4 @@
-import argparse, os, sys, datetime, glob, importlib, yaml
+import argparse, os, sys, datetime, glob, importlib, yaml, json
 import numpy as np
 import random
 from PIL import Image
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     #vqvae2 specialized options
     parser.add_argument('--num_res_ch', type=int, default=32,
                     help='model settings')
-    parser.add_argument('--strides', nargs='+', type=int, default=[4, 2, 2], help='vdvqvae strides')
-    parser.add_argument('--vocabs', nargs='+', type=int, default=[4, 256, 65536], help='vdvqvae vocabularies')
+    parser.add_argument('--strides', type=json.loads, default=[4, 2, 2], help='vdvqvae strides')
+    parser.add_argument('--vocabs', type=json.loads, default=[4, 256, 65536], help='vdvqvae vocabularies')
 
     #loss configuration
     parser.add_argument('--smooth_l1_loss', dest = 'smooth_l1_loss', action = 'store_true')
