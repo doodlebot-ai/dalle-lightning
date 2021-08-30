@@ -114,7 +114,7 @@ if __name__ == "__main__":
                     help='print out tpu related stat')  
     parser.add_argument('--web_dataset',action='store_true', default=False,
                     help='enable web_dataset')  
-    parser.add_argument('--dataset_size', nargs='+', type=int, default=[1e9],
+    parser.add_argument('--dataset_size', nargs='+', type=int, default=[100_000_000, 10_000],
                     help='training settings')
                
     #model configuration
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     #vqvae2 specialized options
     parser.add_argument('--num_res_ch', type=int, default=32,
                     help='model settings')
-    parser.add_argument('--strides', nargs='+', type=int, default=[8, 2], help='vdvqvae strides')
-    parser.add_argument('--vocabs', nargs='+', type=int, default=[1024], help='vdvqvae vocabularies')
+    parser.add_argument('--strides', nargs='+', type=int, default=[4, 2, 2], help='vdvqvae strides')
+    parser.add_argument('--vocabs', nargs='+', type=int, default=[4, 256, 65536], help='vdvqvae vocabularies')
 
     #loss configuration
     parser.add_argument('--smooth_l1_loss', dest = 'smooth_l1_loss', action = 'store_true')
