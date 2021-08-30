@@ -21,7 +21,7 @@ def web_dataset_helper(path):
         assert len(DATASET) > 0, 'The directory ({}) does not contain any WebDataset/.tar files.'.format(path)
         print('Found {} WebDataset .tar(.gz) file(s) under given path {}!'.format(len(DATASET), path))
     elif ('http://' in path.lower()) | ('https://' in path.lower()):
-        DATASET = f"pipe:curl -L -s {path} || true"
+        DATASET = f"pipe:curl -L -s {path} | zstd -d || true"
         print('Found {} http(s) link under given path!'.format(len(DATASET), path))
     elif 'gs://' in path.lower():
         DATASET = f"pipe:gsutil cat {path} || true"

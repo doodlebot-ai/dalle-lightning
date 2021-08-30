@@ -12,7 +12,8 @@ from torchvision.datasets import ImageFolder
 
 from pl_dalle.models.vqgan import VQGAN, EMAVQGAN, GumbelVQGAN
 from pl_dalle.models.vqvae import VQVAE, EMAVQVAE, GumbelVQVAE
-from pl_dalle.models.vqvae2 import VQVAE2 
+from pl_dalle.models.vqvae2 import VQVAE2, VQVAE_N
+from pl_dalle.models.vdvqvae import VDVQVAE
 from pl_dalle.loader import ImageDataModule
 from pl_dalle.callbacks import ReconstructedImageLogger
 
@@ -151,7 +152,8 @@ if __name__ == "__main__":
     #vqvae2 specialized options
     parser.add_argument('--num_res_ch', type=int, default=32,
                     help='model settings')
-    parser.add_argument('--strides', nargs='+', type=int, default=[8, 2], help='vqvae2 strides')
+    parser.add_argument('--strides', nargs='+', type=int, default=[8, 2], help='vdvqvae strides')
+    parser.add_argument('--vocabs', nargs='+', type=int, default=[1024], help='vdvqvae vocabularies')
 
     #loss configuration
     parser.add_argument('--smooth_l1_loss', dest = 'smooth_l1_loss', action = 'store_true')
@@ -192,7 +194,7 @@ if __name__ == "__main__":
         args.world_size = xm.xrt_world_size()
     else:
         tpus = None
-        gpus = args.gpus
+        gpus = [2]
         args.num_cores = args.gpus        
         if args.gpu_dist:
             torch.distributed.init_process_group(backend='nccl') 
@@ -234,6 +236,14 @@ if __name__ == "__main__":
         else:
             stride_2 = args.strides[0]
         model = VQVAE2(args, args.batch_size, args.learning_rate, stride_1=stride_1, stride_2=stride_2) 
+    elif args.model == 'vdvqvae':
+        model = VDVQVAE(
+            args.strides, args.vocabs,
+            args.in_channels, args.hidden_dim, args.codebook_dim,
+            args.quant_beta, args.quant_ema_decay,
+            args.num_res_blocks, args.num_res_ch,
+            args.lr_decay, args.learning_rate, args.batch_size,
+        )
 
     default_root_dir = args.log_dir
 
@@ -265,7 +275,7 @@ if __name__ == "__main__":
                 print("Setting default ckpt to {}. If this is unexpected behavior, remove {}".format(ckpt_path, ckpt_path))
 
     if args.wandb:
-        logger = pl.loggers.wandb.WandbLogger(project='vqvae', log_model='all')
+        logger = pl.loggers.wandb.WandbLogger(project='vqvae-grid', log_model='all')
         logger.watch(model)
     else:
         logger = pl.loggers.tensorboard.TensorBoardLogger(args.log_dir, name='vqvae')                
@@ -282,7 +292,7 @@ if __name__ == "__main__":
     else:
         trainer = Trainer(tpu_cores=tpus, gpus= gpus, default_root_dir=default_root_dir,
                           max_epochs=args.epochs, progress_bar_refresh_rate=args.refresh_rate,precision=args.precision,
-                          accelerator='ddp', benchmark=True,
+                          accelerator='ddp', benchmark=True, plugins=pl.plugins.DDPPlugin(find_unused_parameters=False),
                           num_sanity_val_steps=args.num_sanity_val_steps,
                           limit_train_batches=limit_train_batches,limit_test_batches=limit_test_batches,                          
                           resume_from_checkpoint = ckpt_path,

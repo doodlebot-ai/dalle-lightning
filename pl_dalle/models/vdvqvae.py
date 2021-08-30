@@ -22,7 +22,8 @@ class VDVQVAE(pl.LightningModule):
         num_res_blocks: int = 2,
         num_res_ch: int = 32,
         lr_decay: bool = False,
-        base_lr: float = 4.5e-6,
+        learning_rate: float = 4.5e-6,
+        batch_size: int = 8,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -40,7 +41,7 @@ class VDVQVAE(pl.LightningModule):
         self.decoders = nn.ModuleList([])
         self.upsamples = nn.ModuleList([])
         self.quant_convs = nn.ModuleList([])
-        self.base_lr = base_lr
+        self.learning_rate = learning_rate
         self.lr_decay = lr_decay
 
         for i, stride in enumerate(self.strides):
@@ -172,7 +173,7 @@ class VDVQVAE(pl.LightningModule):
         return {'loss':loss, 'x':x.detach(), 'xrec':xrec.detach()}
 
     def configure_optimizers(self):
-        lr = self.base_lr
+        lr = self.learning_rate
         opt = torch.optim.Adam(self.parameters(),lr=lr, betas=(0.5, 0.9))
         if self.lr_decay:
             scheduler = ReduceLROnPlateau(
