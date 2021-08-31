@@ -30,6 +30,23 @@ from pl_dalle.modules.losses.patch import PatchReconstructionDiscriminator
 
 # Borrowed from https://github.com/deepmind/sonnet and ported it to PyTorch
 
+class ClampWithGrad(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, min, max):
+        ctx.min = min
+        ctx.max = max
+        ctx.save_for_backward(input)
+        return input.clamp(min, max)
+
+    @staticmethod
+    def backward(ctx, grad_in):
+        input, = ctx.saved_tensors
+        return grad_in * (grad_in * (input - input.clamp(ctx.min, ctx.max)) >=
+                          0), None, None
+
+
+clamp_with_grad = ClampWithGrad.apply
+
 class VQVAE_N(pl.LightningModule):
     def __init__(self,
                  args, batch_size, learning_rate,
@@ -40,7 +57,6 @@ class VQVAE_N(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.args = args
-        self.recon_loss = nn.MSELoss()
         self.latent_loss_weight = args.quant_beta
         self.image_size = args.resolution
         self.num_tokens = sum([v for v in vocabs])
@@ -67,14 +83,19 @@ class VQVAE_N(pl.LightningModule):
             self.quant_convs.append(qconv)
 
             if i == 0:
-                out_ch = args.in_channels
+                out_ch = args.in_channels * 2
+                num_res_blocks = args.num_res_blocks * 4
             else:
                 out_ch = args.codebook_dim * num_codes
 
-                ups = nn.ConvTranspose2d(in_ch, in_ch, 4, stride=stride, padding=1)
+                ups = nn.Sequential(
+                    nn.Conv2d(in_ch, in_ch * stride ** 2, 2, padding='same'),
+                    nn.PixelShuffle(stride),
+                )
                 self.upsamples.append(ups)
+                num_res_blocks = args.num_res_blocks
 
-            dec = Decoder(in_ch, out_ch, args.hidden_dim, args.num_res_blocks, args.num_res_ch, stride=stride)
+            dec = Decoder(in_ch, out_ch, args.hidden_dim, num_res_blocks, args.num_res_ch, stride=stride)
             self.decoders.append(dec)
 
         self.quantizers = nn.ModuleList([])
@@ -96,8 +117,8 @@ class VQVAE_N(pl.LightningModule):
 
     def forward(self, input):
         quants, diff, _ = self.encode(input)
-        dec = self.decode(quants)
-        return dec, diff
+        xrec, logvar = self.decode(quants)
+        return xrec, logvar, diff
 
     def encode(self, input):
         pq = input
@@ -127,9 +148,13 @@ class VQVAE_N(pl.LightningModule):
     def decode(self, quants):
         out = quants[0]
         for q, up in zip(quants[1:], self.upsamples):
+            u = up(out)
             out = torch.cat([up(out), q], dim=1)
         out = self.decoders[-1](out)
-        return out
+        mean, logvar = out.chunk(2, dim=1)
+        mean = clamp_with_grad(mean, -1.01, 1.01)
+        logvar = clamp_with_grad(logvar, math.log(1e-5), 1.0)
+        return mean, logvar 
 
     @torch.no_grad()
     def get_codebook_indices(self, img):
@@ -142,15 +167,17 @@ class VQVAE_N(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x = batch[0]
-        xrec, qloss = self(x)
+        xrec, logvar, qloss = self(x)
 
-        recon_loss = self.recon_loss(xrec, x)
+        dist = torch.distributions.Normal(xrec, logvar.div(2).exp())
+        recon_loss = -dist.log_prob(x).mean()
         latent_loss = qloss.mean()
         loss = recon_loss + self.latent_loss_weight * latent_loss
 
         self.log("train/rec_loss", recon_loss, prog_bar=True, logger=True)
         self.log("train/embed_loss", latent_loss, prog_bar=True, logger=True)
         self.log("train/total_loss", loss, prog_bar=True, logger=True)
+        self.log("train/mean_var", logvar.mean().exp(), logger=True)
 
         if self.args.log_images:
             return {'loss': loss, 'x': x.detach(), 'xrec': xrec.detach()}
@@ -159,15 +186,17 @@ class VQVAE_N(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x = batch[0]
-        xrec, qloss = self(x)
+        xrec, logvar, qloss = self(x)
 
-        recon_loss = self.recon_loss(xrec, x)
+        dist = torch.distributions.Normal(xrec, logvar.div(2).exp())
+        recon_loss = -dist.log_prob(x).mean()
         latent_loss = qloss.mean()
         loss = recon_loss + self.latent_loss_weight * latent_loss
         
         self.log("val/rec_loss", recon_loss, prog_bar=True, logger=True)
         self.log("val/embed_loss", latent_loss, prog_bar=True, logger=True)
         self.log("val/total_loss", loss, prog_bar=True, logger=True)  
+        self.log("val/mean_var", logvar.mean().exp(), logger=True)
            
         if self.args.log_images:
             return {'loss':loss, 'x':x.detach(), 'xrec':xrec.detach()}
@@ -262,7 +291,7 @@ class ResBlock(nn.Module):
 
         self.conv = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(in_channel, channel, 3, padding=1),
+            nn.Conv2d(in_channel, channel, 3, padding='same'),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel, in_channel, 1),
         )
